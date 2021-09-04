@@ -1,4 +1,4 @@
-package com.example.weatherapp
+package com.example.weatherapp.activities
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
@@ -13,18 +13,24 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
+import com.example.weatherapp.R
+import com.example.weatherapp.models.WeatherResponse
+import com.example.weatherapp.network.WeatherService
+import com.example.weatherapp.utils.Constants
+import com.google.android.gms.location.*
+import com.google.gson.Gson
 import com.karumi.dexter.Dexter
 import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
-import java.util.jar.Manifest
+import retrofit.Call
+import retrofit.Callback
+import retrofit.GsonConverterFactory
+import retrofit.GsonConverterFactory.*
+import retrofit.Response
+import retrofit2.Retrofit
 
 class MainActivity : AppCompatActivity() {
 
@@ -112,11 +118,13 @@ class MainActivity : AppCompatActivity() {
         val mLocationRequest = LocationRequest()
         mLocationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
 
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mFusedLocationClient.requestLocationUpdates(
             mLocationRequest, mLocationCallback,
             Looper.myLooper()
         )
     }
+
 
     private val mLocationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
@@ -126,11 +134,81 @@ class MainActivity : AppCompatActivity() {
 
             val longitude = mLastLocation.longitude
             Log.i("Current Longitude", "$longitude")
+
+
+            getLocationWeatherDetails(latitude, longitude)
+        }
+    }
+
+
+    private fun getLocationWeatherDetails(latitude: Double, longitude: Double) {
+
+        if (Constants.isNetworkAvailable(this@MainActivity)) {
+
+            val retrofit: retrofit.Retrofit = retrofit.Retrofit.Builder()
+
+                .baseUrl(Constants.BASE_URL)
+
+                .addConverterFactory(GsonConverterFactory.create())
+
+                .build()
+
+
+            val service: WeatherService =
+                retrofit.create<WeatherService>(WeatherService::class.java)
+
+            val listCall: Call<WeatherResponse> = service.getWeather(
+                latitude, longitude, Constants.METRIC_UNIT, Constants.APP_ID
+            )
+
+
+            listCall.enqueue(object : Callback<WeatherResponse> {
+                @SuppressLint("SetTextI18n")
+                override fun onResponse(
+                    response: Response<WeatherResponse>,
+                    retrofit: retrofit.Retrofit
+                ) {
+
+
+                    if (response.isSuccess) {
+
+                        val weatherList: WeatherResponse = response.body()
+                        Log.i("Response Result", "$weatherList")
+                    } else {
+                        // If the response is not success then we check the response code.
+                        val sc = response.code()
+                        when (sc) {
+                            400 -> {
+                                Log.e("Error 400", "Bad Request")
+                            }
+                            404 -> {
+                                Log.e("Error 404", "Not Found")
+                            }
+                            else -> {
+                                Log.e("Error", "Generic Error")
+                            }
+                        }
+                    }
+                }
+
+                override fun onFailure(t: Throwable) {
+                    Log.e("Errorrrrr", t.message.toString())
+                }
+            })
+            // END
+
+        } else {
+            Toast.makeText(
+                this@MainActivity,
+                "No internet connection available.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
 
     }
+
 
 
 
